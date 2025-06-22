@@ -1,0 +1,242 @@
+﻿@page "/documentation"
+@using ErikssonSoftware.Services
+@using static ErikssonSoftware.Data.EntryFromLog
+@inject IParser Parser
+@inject LogAnalyzer Analyzer
+
+<PageTitle>Documentation</PageTitle>
+
+@*For code styling*@
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.4.0/styles/atom-one-dark.min.css">
+</head>
+
+<h3>Documentation</h3>
+<br />
+<br />
+
+<style>
+    .mySteps {
+        max-width: 1000px;
+    }
+</style>
+
+
+<body>
+    <!-- 1 -->
+<section id="steps">
+    <div class="mySteps">
+    @**@
+    <p>This application was fun to work on. Here I go over my thoughts for completing this assignment.</p>
+    <br />
+
+
+
+    <p>We start by creating our data model. Using a record is great because it's immutable as we're just reading from the sample_log, and down the road I'm making the assumption that we only read from logs and not change anything in them, or try to access them by position.</p>
+    <p>It's simple, so it also saves us from writing a little bit more code.</p>
+    <h4 style="color: indianred">EntryFromLog.cs</h4>
+
+    <pre>
+        <code>
+public class EntryFromLog
+{
+    // Data Model
+    public record LogEntry(DateTime TimeStamp, string EventType, string Message);
+}
+        </code>
+    </pre>
+    <br />
+    @**@
+        <p>Then we create the interface, I like this because it defines a clear contract for what we want to implement. Even though this is a small application, this design pattern helps reinforce good habits like separation of concerns, as well as clear and maintainable code.</p>
+        
+        <p>A good analogy I learned was that the interface is like a cooking recipe, and the chef making the meal is the implementation. This allows us flexibility since we can then create different implementations if needed without getting rid of the original.</p>
+        <p>Here we're saying we need a method called Parse, where we take a list of strings, and return log entries.</p>
+        <h4 style="color: indianred">IParser.cs</h4>
+    <pre>
+        <code>
+public interface IParser
+{
+    // Creating Interface
+    IEnumerable&lt;LogEntry&gt; Parse(IEnumerable&lt;string&gt; lines);
+}
+        </code>
+    </pre>
+    <br />
+        @**@
+
+    <p>Now we can implement the parser in order to get the string objects we want for manipulation.</p>
+    <p>We could also create a new list, run a foreach loop and .Add() each entry after it's parsed. After iterating through our log we return this LogEntry list.</p>
+    <p>However, My experience with log files is that they can be very long and verbose so I assumed using a more efficient method would be nice. Otherwise if we're parsing through a file with a million lines, it'll store everything into memory and return the list only after its done.</p>
+    <p>Using yield returns allows one entry to be parsed and returned at a time, so nothings stored in a big list, which results in lower memory usage. For this small application it's not needed but it's ready to handle bigger log files.</p>
+        <h4 style="color: indianred">LogParser.cs</h4>
+    <pre>
+        <code>
+public class LogParser : IParser // implementation
+{
+    public IEnumerable&lt;LogEntry&gt; Parse(IEnumerable&lt;string&gt; lines)
+    {
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue; // skip and move on if line is empty or white spaces 
+
+            // 1.Split the closing brackets
+            var parts = line.Split(&apos;]&apos;, 2, StringSplitOptions.RemoveEmptyEntries);
+
+            // 2. Parse timestamp from first part
+            var timeStamp = DateTime.Parse(parts[0].TrimStart(&apos;[&apos;));
+
+            // get rid of leading white space
+            var rest = parts[1].TrimStart();
+
+            // get the space between event type and message
+            int firstSpace = rest.IndexOf(&apos; &apos;);
+
+            // 3. extract event type then message from second part
+            var eventType = rest[..firstSpace];
+            // extracts the message after the space
+            var message = rest[(firstSpace + 1)..];
+
+            yield return new LogEntry(timeStamp, eventType, message); // yield return to continue iterating, otherwise if we do just return it&apos;ll only process the first line. 
+        }
+
+    }
+}
+        </code>
+    </pre>
+    <br />
+
+    <p>Since I learn by doing, repetition, and visually seeing things, our LogEntry can be seen visualized like this:</p>
+    <pre>
+        <code>
+var LogEntry = new[]
+{
+    
+    new LogEntry (DateTime.Now, &quot;INFO&quot;, &quot;I Love lasagna!&quot;),
+};
+        </code>
+    </pre>
+    <br />
+
+
+
+
+    <p>Now we have the muscle of this bad boy, in my opinion.</p>
+    <p>Using LINQ we manuever through our data and we get organized. </p>
+    <p>CountByType puts our entries into the category where they belong (INFO, WARNING, ERROR). Then it counts how many per each category.</p>
+    <p>We're later going to call on this to feed it to the UI.</p>
+    <p>TopMessages is going to filter by category/event type.</p> 
+    <p>Then we group by, or where messages are equal for example: </p>
+
+        <p>Failed to connect to database: Connection refused</p>
+        <p>This groups all matching messages, then count them to see how many times each message appears. Then we order by biggest to lowest.</p>
+        <p>We Take the top 3, and convert to list for UI. </p>
+    <h4 style="color: indianred">LogAnalyzer.cs</h4>
+
+    <pre>
+        <code>
+public class LogAnalyzer
+{
+// group entries by event type and count the occurrences
+public IReadOnlyList&lt;(string Type, int Count)&gt; CountByType(IEnumerable&lt;LogEntry&gt; entries) =&gt;
+entries.GroupBy(e =&gt; e.EventType) // Group into buckets for the appropriate event type: Warning/Info/Error,etc
+        .Select(group =&gt; (EventType: group.Key, Count: group.Count())) // select the group (bucket) and how many entries in each
+        .OrderByDescending(result =&gt; result.Count) // Sort so most frequent types come first
+        .ToList(); // convert to read only list for UI
+
+// find most frequent messages for the event type we pass in
+public IReadOnlyList&lt;(string Message, int Count)&gt; TopMessages(IEnumerable&lt;LogEntry&gt; entries, string type) =&gt;
+entries.Where(e  =&gt; e.EventType == type) // keep where entries is of this TYPE ... passed in from UI in Log.razor
+        .GroupBy(e =&gt; e.Message)  // group again, now by the message text
+        .OrderByDescending(result =&gt; result.Count()) // sort the message groups by how often each one appears (biggest to lowest)
+        .Take(3) // get the 3 messages sitting at top 
+        .Select(group =&gt; (Message: group.Key, Count: group.Count())) // select the group (bucket) and how many entries in each
+        .ToList(); // convert to read only list for UI
+}
+        </code>
+    </pre>
+    <br />
+
+
+    <p>We add our services to Program.cs to call them with dependency injection in Log.Razor</p>
+    <h4 style="color: indianred">Program.cs</h4>
+
+    <pre>
+        <code>
+// register our services
+builder.Services.AddSingleton&lt;IParser, LogParser&gt;();
+builder.Services.AddSingleton&lt;LogAnalyzer&gt;();
+        </code>
+    </pre>
+
+        
+        <p>Finally within our home page we are ready to put this application together.</p>
+        <p>Initially I hard coded checking for the "ERROR" event type. But then I thought that if we wanted to check for the top 3 messages of another type, we'll have to close the application. Change the string, and run the app again. So binding the desired event types we want to check for in the UI with buttons made sense.</p>
+        <h4 style="color: indianred">Log.razor</h4>
+
+        <pre>
+        <code>
+private void TestForError()
+{
+    checkForThisEventType = &quot;ERROR&quot;;
+    StateHasChanged(); //update UI
+}
+private void TestForInfo()
+{
+    checkForThisEventType = &quot;INFO&quot;;
+    StateHasChanged(); //update UI
+}
+private void TestForWarning()
+{
+    checkForThisEventType = &quot;WARNING&quot;;
+    StateHasChanged(); //update UI
+}
+        </code>
+    </pre>
+        <br />
+
+        <p>Now we can feed our log file through the UI.</p>
+        <p>We click on the button we want to check for: Error, Warning, Info.</p>
+        <p>Inside of HandleUpload we will take our given file, stream then read it.</p>
+        <p>Break the file to individual lines.</p>
+        <p>We get to call our Parser method to turn our lines into the LogEntry objects we need.</p>
+        <p>Lastly we set our two variables with CountByType to get our occurrences per event, and TopMessages for the 3 most frequent messages.</p>
+        <p>Blazor automatically re-renders the UI compoment from async methods so we don't need to call StateHasChanged().</p>
+        <p>Now that our variables contain the information we need it will be displayed in a simple table and ordered list. </p>
+        <h4 style="color: indianred">Log.razor</h4>
+
+        <pre>
+        <code>
+private async Task HandleUpload(InputFileChangeEventArgs e)
+{
+    error = null; // clearing previous error from UI if we have  one
+    try
+    {
+        var file = e.File; // grab the file we are given from InputFile
+        using var reader = new StreamReader(file.OpenReadStream()); // open readstream to access the file, StreamReader will turn this into readable text, the &quot;using&quot; keyword properly disposes StreamReader when done to prevent memory issues
+        var text = await reader.ReadToEndAsync(); // async read the whole file 
+
+        var lines = text.Split(new[] { &quot;\r\n&quot;, &quot;\n&quot; }, StringSplitOptions.RemoveEmptyEntries); // break the text into individual strings
+        var entries = Parser.Parse(lines).ToList(); // now we can call our parser to turn raw lines into our LogEntry Objects
+
+        counts = Analyzer.CountByType(entries).ToList(); // here to satisfy occurrences per event
+        topErrors = Analyzer.TopMessages(entries, checkForThisEventType).ToList(); // here to satisfy and report 3 most frequent messages
+    }
+    catch (Exception ex)
+    {
+        error = ex.Message;
+    }
+}
+        </code>
+    </pre>
+
+    </div>
+
+</section>
+@*For code styling*@
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.4.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+</body>
+
+
+
+

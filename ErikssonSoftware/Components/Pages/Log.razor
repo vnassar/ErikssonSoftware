@@ -1,0 +1,137 @@
+﻿@page "/"
+@using ErikssonSoftware.Data
+@using ErikssonSoftware.Services
+@using static ErikssonSoftware.Data.EntryFromLog
+@inject IParser Parser
+@inject LogAnalyzer Analyzer
+
+<PageTitle>Home</PageTitle>
+
+<h1> Analyzer</h1>
+<br />
+
+<h4>Checking top 3 from the following event type: @checkForThisEventType</h4>
+<br />
+
+
+<InputFile OnChange="HandleUpload" accept=".txt"/>
+<br />
+@if (error != null)
+{
+    <p class="text-danger">@error</p>
+}
+<br />
+
+@if (counts?.Any() == true)
+{
+    <h4>Event Type Counts</h4>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>
+                    Type
+                </th>
+                <th>
+                    Count
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in counts)
+            {
+                <tr>
+                    <td>
+                        @c.Type
+                    </td>
+                    <td>
+                        @c.Count
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h4> Top 3 ERROR Messages</h4>
+    <ol>
+        @foreach (var e in topErrors)
+        {
+            <li>
+                @e.Message <span class="badge bg-secondary">@e.Count</span>
+            </li>
+        }
+    </ol>
+    <br />
+
+}
+
+<button class="btn btn-sm btn-primary" @onclick="TestForError">Check top 3 from Error</button>
+<button class="btn btn-sm btn-primary" @onclick="TestForInfo">Check top 3 from Info</button>
+<button class="btn btn-sm btn-primary" @onclick="TestForWarning">Check top 3 from Warning</button>
+@code {
+    /*
+    The challenge: 
+     You are given a text file (or a string array representing lines of a file) containing log entries. Each line has a simple format (e.g., [TIMESTAMP] [EVENT_TYPE] [MESSAGE]). 
+
+     Your task is to:
+     1. Read and parse the log entries.
+     2. Count the occurrences of each EVENT_TYPE.
+     3.Report the counts in a clear, readable format (e.g, a summary table or list).
+     4. Identify and report the top 3 most frequent MESSAGE phrasses associated with a specific EVENT_TYPE (e.g 'ERROR').
+    */
+
+    private List<(string Type, int Count)>? counts;
+    private List<(string Message, int Count)>? topErrors;
+    private string? error;
+    private string checkForThisEventType;
+
+    private void TestForError()
+    {
+        checkForThisEventType = "ERROR";
+        StateHasChanged(); //update UI
+    }
+    private void TestForInfo()
+    {
+        checkForThisEventType = "INFO";
+        StateHasChanged(); //update UI
+    }
+    private void TestForWarning()
+    {
+        checkForThisEventType = "WARNING";
+        StateHasChanged(); //update UI
+    }
+
+    protected override void OnInitialized()
+    {
+        checkForThisEventType = "ERROR"; // default when page loads
+    }
+
+    private async Task HandleUpload(InputFileChangeEventArgs e)
+    {
+        error = null; // clearing previous error from UI if we have  one
+        try
+        {
+            var file = e.File; // grab the file we are given from InputFile
+            using var reader = new StreamReader(file.OpenReadStream()); // open readstream to access the file, StreamReader will turn this into readable text, the "using" keyword properly disposes StreamReader when done to prevent memory issues
+            var text = await reader.ReadToEndAsync(); // async read the whole file 
+
+            /*
+            var entries = Parser.Parse(text.Split('\n')).ToList(); *Not providing correct output*
+            The above only works for Mac/Linux
+            i have to use "\n" AND "\r\n" for windows
+            */
+            
+
+
+            var lines = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries); // break the text into individual strings
+            var entries = Parser.Parse(lines).ToList(); // now we can call our parser to turn raw lines into our LogEntry Objects
+
+            counts = Analyzer.CountByType(entries).ToList(); // here to satisfy occurrences per event
+            topErrors = Analyzer.TopMessages(entries, checkForThisEventType).ToList(); // here to satisfy and report 3 most frequent messages
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+}
