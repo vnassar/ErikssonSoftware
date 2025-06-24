@@ -15,7 +15,7 @@ I wanted to create something to show good programming habits, apply things I've 
 6. The UI will display a simple table with the occurrences of each event type. Below that, the top 3 messages for that event.
 
 ## Assumptions
-My assumptions were that we always get a txt file identical to the one provided. The format stays the same, being ([TIMESTAMP] [EVENT_TYPE] [MESSAGE]). Now if we have a line thats not in this format we can just skip it, no big deal. Also we just view and work with the data, and thats it, we don't have to save it.
+My assumptions were that we always get a txt file identical to the one provided. The format stays the same, being ([TIMESTAMP] [EVENT_TYPE] [MESSAGE]). Also we just view and work with the data, and thats it, we don't have to save it.
 
 ## Limitations
 Limitations or things missing from this application are that the parser will just skip lines if not in our format. Theres no graceful way of handling these lines or any type of warning or notication other than to skip. It would be great to implement something for this to at least try to get the line and view it elsewhere.
